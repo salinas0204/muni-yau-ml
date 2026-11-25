@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Municipalidad Provincial de Yau — Gestión de Trámites ML</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 980px; margin: 28px auto; padding: 0 16px; background: #f4f6f9; color: #1f2937; }
+    h1 { color: #1b365d; margin-bottom: 4px; }
+    .sub { color: #4b5563; font-size: 14px; margin-bottom: 20px; }
+    form, table { background: #fff; padding: 18px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.08); margin-bottom: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px; }
+    input, select { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
+    button { margin-top: 14px; padding: 10px 18px; background: #1b365d; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    button:hover { background: #294f85; }
+    #estadoMsg { margin-top: 12px; font-weight: bold; font-size: 14px; color: #1b365d; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px; border-bottom: 1px solid #e5e7eb; text-align: left; font-size: 13px; }
+    th { background: #f8fafc; }
+    .alta { color: #b91c1c; font-weight: bold; }
+    .media { color: #b45309; font-weight: bold; }
+    .baja { color: #15803d; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Municipalidad Provincial de Yau</h1>
+  <div class="sub">Registro ciudadano, priorización con Machine Learning y seguimiento en MySQL (puerto 3307)</div>
+
+  <form id="formTramite">
+    <h3>Registrar nuevo trámite</h3>
+    <div class="grid">
+      <div><label>DNI</label><input name="dni" required placeholder="74859612" /></div>
+      <div><label>Nombre completo</label><input name="nombre_completo" required placeholder="Carlos Mendoza" /></div>
+      <div><label>Correo</label><input name="correo" placeholder="carlos@correo.com" /></div>
+      <div><label>Teléfono</label><input name="telefono" placeholder="987654321" /></div>
+      <div>
+        <label>Tipo de trámite</label>
+        <select name="tipo_tramite">
+          <option>Licencia de Funcionamiento</option>
+          <option>Certificado Defensa Civil</option>
+          <option>Subdivision de Predios</option>
+          <option>Constancia de Posesion</option>
+          <option>Registro de Contribuyente</option>
+          <option>Duplicado de Resolucion</option>
+          <option>Autorizacion de Anuncio</option>
+          <option>Inspeccion Tecnica</option>
+        </select>
+      </div>
+      <div>
+        <label>Área asignada</label>
+        <select name="area_asignada">
+          <option>Desarrollo Economico</option>
+          <option>Gestion del Riesgo</option>
+          <option>Catastro y Obras</option>
+          <option>Rentas</option>
+          <option>Secretaria General</option>
+        </select>
+      </div>
+      <div>
+        <label>Documentos completos</label>
+        <select name="documentos_completos">
+          <option value="1">Sí (1)</option>
+          <option value="0">No - Incompletos (0)</option>
+        </select>
+      </div>
+      <div><label>Días restantes</label><input type="number" name="dias_restantes" value="2" min="0" required /></div>
+      <div>
+        <label>Retraso previo</label>
+        <select name="retraso_previo">
+          <option value="0">No (0)</option>
+          <option value="1">Sí (1)</option>
+        </select>
+      </div>
+    </div>
+    <button type="submit">Registrar y evaluar con ML</button>
+    <p id="estadoMsg"></p>
+  </form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th><th>DNI</th><th>Ciudadano</th><th>Trámite</th><th>Área</th><th>Docs</th><th>Prioridad ML</th><th>Score</th>
+      </tr>
+    </thead>
+    <tbody id="tablaTramites"></tbody>
+  </table>
+
+  <script>
+    const API = "http://127.0.0.1:8000/api/tramites";
+
+    async function cargarTramites() {
+      try {
+        const res = await fetch(API);
+        const datos = await res.json();
+        const tbody = document.getElementById("tablaTramites");
+        tbody.innerHTML = "";
+        datos.forEach(t => {
+          const clase = (t.prioridad_ml || "").toLowerCase();
+          tbody.innerHTML += `
+            <tr>
+              <td>${t.id}</td>
+              <td>${t.dni}</td>
+              <td>${t.nombre_completo}</td>
+              <td>${t.tipo_tramite}</td>
+              <td>${t.area_asignada}</td>
+              <td>${t.documentos_completos ? "Completos" : "Incompletos"}</td>
+              <td class="${clase}">${t.prioridad_ml}</td>
+              <td>${t.score_urgencia}</td>
+            </tr>`;
+        });
+      } catch (err) {
+        document.getElementById("estadoMsg").textContent = "Verifica que Uvicorn esté corriendo en http://127.0.0.1:8000";
+      }
+    }
+
+    document.getElementById("formTramite").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const payload = {
+        dni: fd.get("dni"),
+        nombre_completo: fd.get("nombre_completo"),
+        correo: fd.get("correo") || "",
+        telefono: fd.get("telefono") || "",
+        tipo_tramite: fd.get("tipo_tramite"),
+        area_asignada: fd.get("area_asignada"),
+        documentos_completos: Number(fd.get("documentos_completos")),
+        dias_restantes: Number(fd.get("dias_restantes")),
+        retraso_previo: Number(fd.get("retraso_previo")),
+      };
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      document.getElementById("estadoMsg").textContent = data.mensaje
+        ? `${data.mensaje} -> Prioridad: ${data.evaluacion_ml.prioridad_ml} | ${data.evaluacion_ml.alerta}`
+        : `Error: ${data.detail}`;
+      cargarTramites();
+    });
+
+    cargarTramites();
+  </script>
+</body>
+</html>
